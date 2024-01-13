@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.app.json",
+  "include": [
+    "env.d.ts",
+    "src/components/__tests__",
+    "tests",
+    "tests-examples",
+    "src/components/**/*.vue",
+    "src/directives/**/*.ts"
+  ],
+  "exclude": [],
+  "compilerOptions": {
+    "composite": true,
+    "lib": [],
+    "types": ["node", "jsdom", "vite/client"]
+  }
+}

@@ -1,0 +1,560 @@
+name: 'ci'
+run-name: 'ODK Web Forms CI'
+
+on:
+  workflow_dispatch:
+  push:
+  merge_group:
+  pull_request:
+    paths-ignore:
+      - ".vscode/**"
+      - "**/*.md"
+      - ".github/ISSUE_TEMPLATE/**"
+
+# Automatically cancel older in-progress jobs on the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request_target' && github.head_ref || github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
+
+env:
+  TZ: 'America/Phoenix'
+
+jobs:
+  install-and-build:
+    name: 'Install dependencies and build packages'
+    runs-on: 'ubuntu-latest'
+
+    strategy:
+      matrix:
+        node-version: ['18.20.4', '20.15.1', '22.4.1']
+
+    steps:
+      - uses: 'actions/checkout@v4'
+
+      - uses: 'volta-cli/action@v4'
+        with:
+          node-version: '${{ matrix.node-version }}'
+          yarn-version: '1.22.22'
+
+      - uses: 'actions/cache@v4'
+        id: cache-install
+        with:
+          path: |
+            node_modules
+            **/node_modules
+          key: install-${{ matrix.node-version }}-${{ hashFiles('yarn.lock', '.github/workflows/ci.yml', 'examples/*/yarn.lock', 'packages/*/package.json', 'packages/*/yarn.lock') }}
+
+      - uses: 'actions/cache@v4'
+        id: cache-build
+        with:
+          # Note: the tree-sitter-xpath .js and .wasm paths are standard for
+          # tree-sitter's build output. They also litter a bunch of other files
+          # in various build phases, several under `src` (which is why the
+          # grammar's TypeScript source is not there).
+          path: |
+            examples/*/dist
+            packages/*/dist
+            packages/tree-sitter-xpath/grammar.js
+            packages/tree-sitter-xpath/src/grammar.json
+            packages/tree-sitter-xpath/src/parser.c
+            packages/tree-sitter-xpath/src/tree_sitter/parser.h
+            packages/tree-sitter-xpath/tree-sitter-xpath.wasm
+            packages/tree-sitter-xpath/types
+          key: build-${{ matrix.node-version }}-${{ github.sha }}
+
+      # `@getodk/xpath` tests (currently) expect this time zone
+      - uses: szenius/set-timezone@v2.0
+        with:
+          timezoneLinux: ${{ env.TZ }}
+          timezoneMacos: ${{ env.TZ }}
+          timezoneWindows: ${{ env.TZ }}
+
+      - run: 'yarn install --frozen-lockfile'
+      - run: 'yarn build --force'
+
+  lint:
+    name: 'Lint (global)'
+    needs: ['install-and-build']
+    runs-on: 'ubuntu-latest'
+
+    strategy:
+      matrix:
+        node-version: ['22.4.1']
+
+    steps:
+      - uses: 'actions/checkout@v4'
+
+      - uses: 'volta-cli/action@v4'
+        with:
+          node-version: '${{ matrix.node-version }}'
+          yarn-version: '1.22.22'
+
+      - uses: 'actions/cache@v4'
+        id: cache-install
+        with:
+          path: |
+            node_modules
+            **/node_modules
+          key: install-${{ matrix.node-version }}-${{ hashFiles('yarn.lock', '.github/workflows/ci.yml', 'examples/*/yarn.lock', 'packages/*/package.json', 'packages/*/yarn.lock') }}
+          fail-on-cache-miss: true
+
+      - uses: 'actions/cache@v4'
+        id: cache-build
+        with:
+          path: |
+            examples/*/dist
+            packages/*/dist
+            packages/tree-sitter-xpath/grammar.js
+            packages/tree-sitter-xpath/src/grammar.json
+            packages/tree-sitter-xpath/src/parser.c
+            packages/tree-sitter-xpath/src/tree_sitter/parser.h
+            packages/tree-sitter-xpath/tree-sitter-xpath.wasm
+            packages/tree-sitter-xpath/types
+          key: build-${{ matrix.node-version }}-${{ github.sha }}
+          fail-on-cache-miss: true
+
+      - run: 'yarn lint'
+
+      - run: 'yarn format:checkonly'
+
+  odk-common:
+    name: '@getodk/common'
+    needs: ['install-and-build']
+    runs-on: 'ubuntu-latest'
+
+    strategy:
+      matrix:
+        target: ['Node']
+        node-version: ['18.20.4', '20.15.1', '22.4.1']
+        include:
+          - target: 'Web'
+            node-version: '22.4.1'
+            browser: chromium
+          - target: 'Web'
+            node-version: '22.4.1'
+            browser: firefox
+          - target: 'Web'
+            node-version: '22.4.1'
+            browser: webkit
+
+    steps:
+      - uses: 'actions/checkout@v4'
+
+      - uses: 'volta-cli/action@v4'
+        with:
+          node-version: '${{ matrix.node-version }}'
+          yarn-version: '1.22.22'
+
+      - uses: 'actions/cache@v4'
+        id: cache-install
+        with:
+          path: |
+            node_modules
+            **/node_modules
+          key: install-${{ matrix.node-version }}-${{ hashFiles('yarn.lock', '.github/workflows/ci.yml', 'examples/*/yarn.lock', 'packages/*/package.json', 'packages/*/yarn.lock') }}
+          fail-on-cache-miss: true
+
+      - uses: 'actions/cache@v4'
+        id: cache-build
+        with:
+          path: |
+            examples/*/dist
+            packages/*/dist
+            packages/tree-sitter-xpath/grammar.js
+            packages/tree-sitter-xpath/src/grammar.json
+            packages/tree-sitter-xpath/src/parser.c
+            packages/tree-sitter-xpath/src/tree_sitter/parser.h
+            packages/tree-sitter-xpath/tree-sitter-xpath.wasm
+            packages/tree-sitter-xpath/types
+          key: build-${{ matrix.node-version }}-${{ github.sha }}
+          fail-on-cache-miss: true
+
+      - if: ${{ matrix.target == 'Node' }}
+        run: 'yarn workspace @getodk/common test:types'
+
+      - if: ${{ matrix.target == 'Node' }}
+        run: 'yarn workspace @getodk/common test-node:jsdom'
+
+      - if: ${{ matrix.target == 'Web' }}
+        run: 'yarn playwright install ${{ matrix.browser }} --with-deps'
+
+      - if: ${{ matrix.target == 'Web' }}
+        run: 'yarn workspace @getodk/common test-browser:${{ matrix.browser }}'
+
+  xforms-engine:
+    name: '@getodk/xforms-engine'
+    needs: ['install-and-build']
+    runs-on: 'ubuntu-latest'
+
+    strategy:
+      matrix:
+        target: ['Node']
+        node-version: ['18.20.4', '20.15.1', '22.4.1']
+        include:
+          - target: 'Web'
+            node-version: '22.4.1'
+            browser: chromium
+          - target: 'Web'
+            node-version: '22.4.1'
+            browser: firefox
+          - target: 'Web'
+            node-version: '22.4.1'
+            browser: webkit
+
+    steps:
+      - uses: 'actions/checkout@v4'
+
+      - uses: 'volta-cli/action@v4'
+        with:
+          node-version: '${{ matrix.node-version }}'
+          yarn-version: '1.22.22'
+
+      - uses: 'actions/cache@v4'
+        id: cache-install
+        with:
+          path: |
+            node_modules
+            **/node_modules
+          key: install-${{ matrix.node-version }}-${{ hashFiles('yarn.lock', '.github/workflows/ci.yml', 'examples/*/yarn.lock', 'packages/*/package.json', 'packages/*/yarn.lock') }}
+          fail-on-cache-miss: true
+
+      - uses: 'actions/cache@v4'
+        id: cache-build
+        with:
+          path: |
+            examples/*/dist
+            packages/*/dist
+            packages/tree-sitter-xpath/grammar.js
+            packages/tree-sitter-xpath/src/grammar.json
+            packages/tree-sitter-xpath/src/parser.c
+            packages/tree-sitter-xpath/src/tree_sitter/parser.h
+            packages/tree-sitter-xpath/tree-sitter-xpath.wasm
+            packages/tree-sitter-xpath/types
+          key: build-${{ matrix.node-version }}-${{ github.sha }}
+          fail-on-cache-miss: true
+
+      - if: ${{ matrix.target == 'Node' }}
+        run: 'yarn workspace @getodk/xforms-engine test:types'
+
+      - if: ${{ matrix.target == 'Node' }}
+        run: 'yarn workspace @getodk/xforms-engine test-node:jsdom'
+
+      - if: ${{ matrix.target == 'Web' }}
+        run: 'yarn playwright install ${{ matrix.browser }} --with-deps'
+
+      - if: ${{ matrix.target == 'Web' }}
+        run: 'yarn workspace @getodk/xforms-engine test-browser:${{ matrix.browser }}'
+
+  scenario:
+    name: '@getodk/scenario'
+    needs: ['install-and-build']
+    runs-on: 'ubuntu-latest'
+
+    strategy:
+      matrix:
+        target: ['Node']
+        node-version: ['18.20.4', '20.15.1', '22.4.1']
+        include:
+          - target: 'Web'
+            node-version: '22.4.1'
+            browser: chromium
+          - target: 'Web'
+            node-version: '22.4.1'
+            browser: firefox
+          - target: 'Web'
+            node-version: '22.4.1'
+            browser: webkit
+
+    steps:
+      - uses: 'actions/checkout@v4'
+
+      - uses: 'volta-cli/action@v4'
+        with:
+          node-version: '${{ matrix.node-version }}'
+          yarn-version: '1.22.22'
+
+      - uses: 'actions/cache@v4'
+        id: cache-install
+        with:
+          path: |
+            node_modules
+            **/node_modules
+          key: install-${{ matrix.node-version }}-${{ hashFiles('yarn.lock', '.github/workflows/ci.yml', 'examples/*/yarn.lock', 'packages/*/package.json', 'packages/*/yarn.lock') }}
+          fail-on-cache-miss: true
+
+      - uses: 'actions/cache@v4'
+        id: cache-build
+        with:
+          path: |
+            examples/*/dist
+            packages/*/dist
+            packages/tree-sitter-xpath/grammar.js
+            packages/tree-sitter-xpath/src/grammar.json
+            packages/tree-sitter-xpath/src/parser.c
+            packages/tree-sitter-xpath/src/tree_sitter/parser.h
+            packages/tree-sitter-xpath/tree-sitter-xpath.wasm
+            packages/tree-sitter-xpath/types
+          key: build-${{ matrix.node-version }}-${{ github.sha }}
+          fail-on-cache-miss: true
+
+      - if: ${{ matrix.target == 'Node' }}
+        run: 'yarn workspace @getodk/scenario test:types'
+
+      - if: ${{ matrix.target == 'Node' }}
+        run: 'yarn workspace @getodk/scenario test-node:jsdom'
+
+      - if: ${{ matrix.target == 'Web' }}
+        run: 'yarn playwright install ${{ matrix.browser }} --with-deps'
+
+      - if: ${{ matrix.target == 'Web' }}
+        run: 'yarn workspace @getodk/scenario test-browser:${{ matrix.browser }}'
+
+  xpath:
+    name: '@getodk/xpath'
+    needs: ['install-and-build']
+    runs-on: 'ubuntu-latest'
+
+    strategy:
+      matrix:
+        target: ['Node']
+        node-version: ['18.20.4', '20.15.1', '22.4.1']
+        include:
+          - target: 'Web'
+            node-version: '22.4.1'
+            browser: chromium
+          - target: 'Web'
+            node-version: '22.4.1'
+            browser: firefox
+          - target: 'Web'
+            node-version: '22.4.1'
+            browser: webkit
+
+    steps:
+      - uses: 'actions/checkout@v4'
+
+      - uses: 'volta-cli/action@v4'
+        with:
+          node-version: '${{ matrix.node-version }}'
+          yarn-version: '1.22.22'
+
+      - uses: 'actions/cache@v4'
+        id: cache-install
+        with:
+          path: |
+            node_modules
+            **/node_modules
+          key: install-${{ matrix.node-version }}-${{ hashFiles('yarn.lock', '.github/workflows/ci.yml', 'examples/*/yarn.lock', 'packages/*/package.json', 'packages/*/yarn.lock') }}
+          fail-on-cache-miss: true
+
+      - uses: 'actions/cache@v4'
+        id: cache-build
+        with:
+          path: |
+            examples/*/dist
+            packages/*/dist
+            packages/tree-sitter-xpath/grammar.js
+            packages/tree-sitter-xpath/src/grammar.json
+            packages/tree-sitter-xpath/src/parser.c
+            packages/tree-sitter-xpath/src/tree_sitter/parser.h
+            packages/tree-sitter-xpath/tree-sitter-xpath.wasm
+            packages/tree-sitter-xpath/types
+          key: build-${{ matrix.node-version }}-${{ github.sha }}
+          fail-on-cache-miss: true
+
+      - uses: szenius/set-timezone@v2.0
+        with:
+          timezoneLinux: ${{ env.TZ }}
+          timezoneMacos: ${{ env.TZ }}
+          timezoneWindows: ${{ env.TZ }}
+
+      - if: ${{ matrix.target == 'Node' }}
+        run: 'yarn workspace @getodk/xpath test:types'
+
+      - if: ${{ matrix.target == 'Node' }}
+        run: 'yarn workspace @getodk/xpath test-node:jsdom'
+
+      - if: ${{ matrix.target == 'Web' }}
+        run: 'yarn playwright install ${{ matrix.browser }} --with-deps'
+
+      - if: ${{ matrix.target == 'Web' }}
+        run: 'yarn workspace @getodk/xpath test-browser:${{ matrix.browser }}'
+
+  tree-sitter-xpath:
+    name: '@getodk/tree-sitter-xpath'
+    needs: ['install-and-build']
+    runs-on: 'ubuntu-latest'
+
+    strategy:
+      matrix:
+        node-version: ['18.20.4', '20.15.1', '22.4.1']
+
+    steps:
+      - uses: 'actions/checkout@v4'
+
+      - uses: 'volta-cli/action@v4'
+        with:
+          node-version: '${{ matrix.node-version }}'
+          yarn-version: '1.22.22'
+
+      - uses: 'actions/cache@v4'
+        id: cache-install
+        with:
+          path: |
+            node_modules
+            **/node_modules
+          key: install-${{ matrix.node-version }}-${{ hashFiles('yarn.lock', '.github/workflows/ci.yml', 'examples/*/yarn.lock', 'packages/*/package.json', 'packages/*/yarn.lock') }}
+          fail-on-cache-miss: true
+
+      - uses: 'actions/cache@v4'
+        id: cache-build
+        with:
+          path: |
+            examples/*/dist
+            packages/*/dist
+            packages/tree-sitter-xpath/grammar.js
+            packages/tree-sitter-xpath/src/grammar.json
+            packages/tree-sitter-xpath/src/parser.c
+            packages/tree-sitter-xpath/src/tree_sitter/parser.h
+            packages/tree-sitter-xpath/tree-sitter-xpath.wasm
+            packages/tree-sitter-xpath/types
+          key: build-${{ matrix.node-version }}-${{ github.sha }}
+          fail-on-cache-miss: true
+
+      - run: 'yarn workspace @getodk/tree-sitter-xpath test'
+
+  ui-solid:
+    name: '@getodk/ui-solid'
+    needs: ['install-and-build']
+    runs-on: 'ubuntu-latest'
+
+    strategy:
+      matrix:
+        target: ['Node']
+        node-version: ['18.20.4', '20.15.1', '22.4.1']
+        include:
+          - target: 'Web'
+            node-version: '22.4.1'
+            browser: chromium
+          - target: 'Web'
+            node-version: '22.4.1'
+            browser: firefox
+          - target: 'Web'
+            node-version: '22.4.1'
+            browser: webkit
+
+    steps:
+      - uses: 'actions/checkout@v4'
+
+      - uses: 'volta-cli/action@v4'
+        with:
+          node-version: '${{ matrix.node-version }}'
+          yarn-version: '1.22.22'
+
+      - uses: 'actions/cache@v4'
+        id: cache-install
+        with:
+          path: |
+            node_modules
+            **/node_modules
+          key: install-${{ matrix.node-version }}-${{ hashFiles('yarn.lock', '.github/workflows/ci.yml', 'examples/*/yarn.lock', 'packages/*/package.json', 'packages/*/yarn.lock') }}
+          fail-on-cache-miss: true
+
+      - uses: 'actions/cache@v4'
+        id: cache-build
+        with:
+          path: |
+            examples/*/dist
+            packages/*/dist
+            packages/tree-sitter-xpath/grammar.js
+            packages/tree-sitter-xpath/src/grammar.json
+            packages/tree-sitter-xpath/src/parser.c
+            packages/tree-sitter-xpath/src/tree_sitter/parser.h
+            packages/tree-sitter-xpath/tree-sitter-xpath.wasm
+            packages/tree-sitter-xpath/types
+          key: build-${{ matrix.node-version }}-${{ github.sha }}
+          fail-on-cache-miss: true
+
+      - if: ${{ matrix.target == 'Node' }}
+        run: 'yarn workspace @getodk/ui-solid test:types'
+
+      - if: ${{ matrix.target == 'Node' }}
+        run: 'yarn workspace @getodk/ui-solid test-node:jsdom'
+
+      - if: ${{ matrix.target == 'Web' }}
+        run: 'yarn playwright install ${{ matrix.browser }} --with-deps'
+
+      - if: ${{ matrix.target == 'Web' }}
+        run: 'yarn workspace @getodk/ui-solid test-browser:${{ matrix.browser }}'
+
+  web-forms:
+    name: '@getodk/web-forms'
+    needs: ['install-and-build']
+    runs-on: 'ubuntu-latest'
+
+    strategy:
+      matrix:
+        target: ['Node']
+        node-version: ['18.20.4', '20.15.1', '22.4.1']
+        include:
+          - target: 'Web'
+            node-version: '22.4.1'
+            browser: chromium
+          - target: 'Web'
+            node-version: '22.4.1'
+            browser: firefox
+          - target: 'Web'
+            node-version: '22.4.1'
+            browser: webkit
+
+    steps:
+      - uses: 'actions/checkout@v4'
+
+      - uses: 'volta-cli/action@v4'
+        with:
+          node-version: '${{ matrix.node-version }}'
+          yarn-version: '1.22.22'
+
+      - uses: 'actions/cache@v4'
+        id: cache-install
+        with:
+          path: |
+            node_modules
+            **/node_modules
+          key: install-${{ matrix.node-version }}-${{ hashFiles('yarn.lock', '.github/workflows/ci.yml', 'examples/*/yarn.lock', 'packages/*/package.json', 'packages/*/yarn.lock') }}
+          fail-on-cache-miss: true
+
+      - uses: 'actions/cache@v4'
+        id: cache-build
+        with:
+          path: |
+            examples/*/dist
+            packages/*/dist
+            packages/tree-sitter-xpath/grammar.js
+            packages/tree-sitter-xpath/src/grammar.json
+            packages/tree-sitter-xpath/src/parser.c
+            packages/tree-sitter-xpath/src/tree_sitter/parser.h
+            packages/tree-sitter-xpath/tree-sitter-xpath.wasm
+            packages/tree-sitter-xpath/types
+          key: build-${{ matrix.node-version }}-${{ github.sha }}
+          fail-on-cache-miss: true
+
+      - if: ${{ matrix.target == 'Node' }}
+        run: 'yarn workspace @getodk/web-forms test:types'
+
+      - if: ${{ matrix.target == 'Node' }}
+        run: 'yarn workspace @getodk/web-forms test-node:jsdom'
+
+      - if: ${{ matrix.target == 'Web' }}
+        run: 'yarn playwright install ${{ matrix.browser }} --with-deps'
+
+      # TODO: hopefully temporary! Attempt to mitigate flakiness in webkit by
+      # running twice when first run fails. At least in local testing, this has
+      # been near (if not at) 100% success.
+      - if: ${{ matrix.target == 'Web' && matrix.browser == 'webkit' }}
+        run: 'yarn workspace @getodk/web-forms test-browser:${{ matrix.browser }} || yarn workspace @getodk/web-forms test-browser:${{ matrix.browser }}'
+
+      - if: ${{ matrix.target == 'Web' && matrix.browser != 'webkit' }}
+        run: 'yarn workspace @getodk/web-forms test-browser:${{ matrix.browser }}'

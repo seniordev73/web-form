@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": ["do-not-import.js", "benchmarks", "src", "test", "types", "vite-env.d.ts"],
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "paths": {
+      "@getodk/common/types/*": ["../common/types/*"],
+      "@getodk/common/*": ["../common/src/*"]
+    }
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "name": "@getodk/xforms-engine",
+  "version": "0.2.0",
+  "license": "Apache-2.0",
+  "description": "XForms engine for ODK Web Forms",
+  "type": "module",
+  "author": "getodk",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/getodk/web-forms",
+    "directory": "packages/xforms-engine"
+  },
+  "bugs": "https://github.com/getodk/web-forms/issues",
+  "homepage": "https://getodk.org/",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "solid": "./dist/solid.js",
+      "import": "./dist/index.js",
+      "browser": "./dist/index.js",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "node": "^18.20.4 || ^20.15.1 || ^22.4.1",
+    "yarn": "1.22.22"
+  },
+  "scripts": {
+    "build": "npm-run-all -nl build:*",
+    "build:clean": "rimraf dist/",
+    "build:js": "vite build",
+    "build:solid": "export VITE_BUILD_TARGET=solid && vite build",
+    "dev": "vite",
+    "docs": "npm-run-all -nl docs:*",
+    "docs:clean": "rimraf api-docs/",
+    "docs:api": "typedoc --readme none --out api-docs --entryPoints \"src/**/*\"",
+    "docs:serve": "http-server api-docs -o modules/client",
+    "test": "npm-run-all --print-name --print-label test-node:* test-browser:*",
+    "test-node:jsdom": "vitest run",
+    "test-browser:chromium": "BROWSER_NAME=chromium vitest run",
+    "test-browser:firefox": "BROWSER_NAME=firefox vitest run",
+    "test-browser:webkit": "BROWSER_NAME=webkit vitest run",
+    "test-watch:jsdom": "vitest",
+    "test-watch:chromium": "BROWSER_NAME=chromium vitest",
+    "test-watch:firefox": "BROWSER_NAME=firefox vitest",
+    "test-watch:webkit": "BROWSER_NAME=webkit vitest",
+    "test:types": "tsc --project ./tsconfig.json --emitDeclarationOnly false --noEmit"
+  },
+  "dependencies": {
+    "solid-js": "^1.8.18"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.8",
+    "@getodk/tree-sitter-xpath": "0.1.1",
+    "@getodk/xpath": "0.1.2",
+    "@playwright/test": "^1.45.1",
+    "@vitest/browser": "^2.0.2",
+    "babel-plugin-transform-jsbi-to-bigint": "^1.4.0",
+    "http-server": "^14.1.1",
+    "jsdom": "^24.1.0",
+    "typedoc": "^0.26.4",
+    "vite": "^5.3.3",
+    "vite-plugin-dts": "^3.9.1",
+    "vite-plugin-no-bundle": "^4.0.0",
+    "vitest": "^2.0.2"
+  },
+  "peerDependencies": {
+    "solid-js": "^1.8.18"
+  },
+  "peerDependenciesMeta": {
+    "solid-js": {
+      "optional": true
+    }
+  }
+}

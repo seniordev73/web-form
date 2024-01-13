@@ -1,0 +1,72 @@
+{
+  "name": "root",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/getodk/web-forms"
+  },
+  "type": "module",
+  "version": "0.1.0",
+  "engines": {
+    "node": "^18.20.4 || ^20.15.1 || ^22.4.1",
+    "yarn": "1.22.22"
+  },
+  "volta": {
+    "node": "22.4.1",
+    "yarn": "1.22.22"
+  },
+  "packageManager": "yarn@1.22.22",
+  "workspaces": [
+    "packages/*",
+    "scripts"
+  ],
+  "scripts": {
+    "preinstall": "npx only-allow yarn",
+    "test": "turbo run test",
+    "build": "turbo run build",
+    "types": "turbo run types",
+    "bump": "changeset add",
+    "format": "prettier -w \"**/*\" --ignore-unknown --cache",
+    "format:checkonly": "prettier -c \"**/*\" --ignore-unknown",
+    "lint": "eslint . --report-unused-disable-directives",
+    "feature-matrix": "node scripts/feature-matrix/render.js"
+  },
+  "dependencies": {
+    "@changesets/changelog-github": "^0.5.0",
+    "@changesets/cli": "^2.27.7",
+    "@eslint/js": "^9.6.0",
+    "@eslint/eslintrc": "^3.1.0",
+    "@tsconfig/node20": "^20.1.4",
+    "@types/eslint__js": "^8.42.3",
+    "@types/eslint": "^8.56.10",
+    "@types/eslint-config-prettier": "^6.11.3",
+    "@types/jsdom": "^21.1.7",
+    "@types/node": "^20.14.10",
+    "@typescript-eslint/eslint-plugin": "^7.16.0",
+    "@typescript-eslint/parser": "^7.16.0",
+    "@vue/eslint-config-prettier": "^9.0.0",
+    "@vue/eslint-config-typescript": "^13.0.0",
+    "@vue/tsconfig": "^0.5.1",
+    "eslint": "^9.6.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-jsdoc": "^48.7.0",
+    "eslint-plugin-no-only-tests": "^3.1.0",
+    "eslint-plugin-prettier": "^5.1.3",
+    "eslint-plugin-vue": "^9.27.0",
+    "nan": "2.20.0",
+    "node-gyp": "10.2.0",
+    "npm-run-all2": "^6.2.2",
+    "only-allow": "^1.2.1",
+    "organize-imports-cli": "^0.10.0",
+    "prettier": "^3.3.2",
+    "rimraf": "^5.0.9",
+    "turbo": "^2.0.6",
+    "typescript": "~5.5.3",
+    "typescript-eslint": "^7.16.0",
+    "vue": "3.3.4",
+    "vue-tsc": "^2.0.19"
+  },
+  "resolutions": {
+    "**/tree-sitter": "0.21.1"
+  }
+}
